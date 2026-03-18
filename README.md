@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🦞 Desktop-Claw
+# Desktop-Claw
 
 **一个常驻桌面的 AI 小伙伴**
 
