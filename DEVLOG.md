@@ -61,6 +61,26 @@
 
 ---
 
+### 2026-03-18｜架构决策：Skills + Tools 双层原子能力
+
+**背景：** 调研 anthropics/skills 仓库与 openclaw-mini 源码后，明确了原子能力（read/write/edit）的正确实现方式。
+
+**决策：** 每项原子能力由两层叠加实现：
+
+- **Skills 层**（SKILL.md）：带 YAML frontmatter 的 Markdown 文件，Agent Loop 构建 LLM 请求前注入 system prompt 片段，告诉模型「何时用、怎么用、边界是什么」
+- **Tools 层**（TypeScript）：Node.js `fs` 操作 + Tool Use schema 声明，模型决策后由 Agent Loop 真正调用执行
+
+**关键澄清：**
+- anthropics/skills 的 PDF/Excel Skill 依赖 Anthropic 服务端沙盒，不可直接在 Desktop-Claw 使用
+- OpenClaw 的 Skills 同样是纯 system prompt 注入，真正干活的是 TypeScript Tools 层
+- Desktop-Claw 必须自己实现 `read/write/edit` 的 Node.js 代码，Skills 层是说明书，Tools 层是执行器
+
+**演进路径：** Milestone A 内置 FileSkill → Milestone C 接入 MCP Client → Milestone D 用户自定义 Skills
+
+**影响文档：** ARCHITECTURE.md v0.2（§4.3 / §5 / §13 / §15 已更新），PLAN.md A.6 任务项已更新
+
+---
+
 ### 2026-03-18｜Milestone 0 · 脚手架搭建完成
 
 **完成内容：**
