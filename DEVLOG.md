@@ -10,7 +10,7 @@
 
 **当前阶段：** Milestone A（架构闭环）  
 **最近更新：** 2026-03-18  
-**下一个目标：** 完成悬浮球 UI + WebSocket 通路（Milestone A.1 / A.2）
+**下一个目标：** A.1 ChatPanel UI + Milestone A.2 WebSocket 通路
 
 ---
 
@@ -32,13 +32,34 @@
 | 里程碑 | 内容 | 状态 |
 |--------|------|------|
 | Milestone 0 | 架构设计、技术选型、脚手架搭建 | ✅ 完成 |
-| Milestone A | 架构闭环（Gateway + Agent Loop + 三工具） | 🔲 未开始 |
+| Milestone A | 架构闭环（Gateway + Agent Loop + 三工具） | � 进行中 |
 | Milestone B | 体验稳定（取消/超时/记忆归档） | 🔲 未开始 |
 | Milestone C | 可扩展（测试基线 + 扩展位预留） | 🔲 未开始 |
 
 ---
 
 ## 开发日志
+
+### 2026-03-18｜Milestone A.1 · 悬浮球 UI 完成（FloatingBall）
+
+**完成内容：**
+- `apps/desktop/src/main/index.ts` 重写：创建 72×72 `frameless + transparent + alwaysOnTop`（`'floating'` 层级）窗口，初始位置屏幕右下角
+- `apps/desktop/src/preload/index.ts` 新增 `dragStart / dragMove / dragEnd` IPC 通道（通过 `contextBridge` 暴露）
+- `apps/desktop/src/renderer/components/FloatingBall/index.tsx`：圆形悬浮按钮，`movedRef` flag 区分拖拽与点击，点击切换 `isOpen` 展开/折叠状态
+- `apps/desktop/src/renderer/components/FloatingBall/styles.css`：`html/body/#root background: transparent` 透明背景，橙色渐变圆、hover/active/open 状态动画
+- `apps/desktop/src/renderer/env.d.ts`：`window.electronAPI` 全局类型声明
+
+**验证结果：**
+- `pnpm typecheck` → 三个 tsconfig 目标全部 0 错误 ✅
+- Electron 悬浮球窗口正常启动，frameless 透明窗口渲染 ✅
+
+**关键决策记录：**
+- 拖拽驱动：renderer 监听 `mousemove` → IPC `drag:move` → main 用 `screen.getCursorScreenPoint()` + `setPosition()`，无需传坐标值，避免数据竞争
+- 拖拽 vs 点击判断：利用 `movedRef.current` flag，`mousemove` 触发则为拖拽，否则为点击，简单可靠
+
+**下一步：** A.1 ChatPanel — 聊天面板 UI（输入框 + 消息列表 + 气泡 + 流式 cursor 动画）
+
+---
 
 ### 2026-03-18｜Milestone 0 · 脚手架搭建完成
 
