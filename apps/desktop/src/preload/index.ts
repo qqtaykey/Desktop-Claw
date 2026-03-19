@@ -7,5 +7,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   /** 悬浮球拖拽 */
   dragStart: (): void => { ipcRenderer.send('drag:start') },
   dragMove: (): void => { ipcRenderer.send('drag:move') },
-  dragEnd: (): void => { ipcRenderer.send('drag:end') }
+  dragEnd: (): void => { ipcRenderer.send('drag:end') },
+  /** 透明区域点击穿透控制 */
+  setIgnoreMouseEvents: (ignore: boolean): void => {
+    ipcRenderer.send('set-ignore-mouse-events', ignore)
+  }
 })

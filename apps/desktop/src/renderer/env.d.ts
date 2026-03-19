@@ -10,6 +10,8 @@ declare global {
       dragStart: () => void
       dragMove: () => void
       dragEnd: () => void
+      /** 透明区域点击穿透控制 */
+      setIgnoreMouseEvents: (ignore: boolean) => void
     }
   }
 }

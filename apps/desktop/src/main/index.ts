@@ -8,14 +8,24 @@ let backendHandle: { close: () => Promise<void> } | null = null
 /** 拖拽时记录光标相对于窗口左上角的偏移量 */
 let dragOffset = { x: 0, y: 0 }
 
+/** 悬浮球窗口尺寸（含气泡区域） */
+const BALL_WIN_W = 240
+const BALL_WIN_H = 220
+
 function createBallWindow(): void {
   const { width, height } = screen.getPrimaryDisplay().workAreaSize
 
+  // 球（56px）在窗口底部居中，计算窗口位置使球出现在屏幕右下角
+  // 球中心在窗口内约: (BALL_WIN_W/2, BALL_WIN_H - 36)
+  // 目标球中心在屏幕约: (width - 60, height - 60)
+  const x = width - 60 - Math.round(BALL_WIN_W / 2)
+  const y = height - 60 - (BALL_WIN_H - 36)
+
   ballWin = new BrowserWindow({
-    width: 72,
-    height: 72,
-    x: width - 96,
-    y: height - 96,
+    width: BALL_WIN_W,
+    height: BALL_WIN_H,
+    x,
+    y,
     frame: false,
     transparent: true,
     alwaysOnTop: true,
@@ -33,6 +43,9 @@ function createBallWindow(): void {
 
   // macOS: floating 层级 — 浮于普通窗口之上，不遮挡全屏
   ballWin.setAlwaysOnTop(true, 'floating')
+
+  // 透明区域点击穿透，forward: true 保留 mousemove 以触发 mouseenter/leave
+  ballWin.setIgnoreMouseEvents(true, { forward: true })
 
   ballWin.on('ready-to-show', () => ballWin?.show())
 
@@ -66,6 +79,16 @@ ipcMain.on('drag:move', () => {
 
 ipcMain.on('drag:end', () => {
   // TODO: 持久化位置到 config.json（Milestone B）
+})
+
+// ── IPC: 透明区域点击穿透 ──────────────────────────────────
+ipcMain.on('set-ignore-mouse-events', (_event, ignore: boolean) => {
+  if (!ballWin) return
+  if (ignore) {
+    ballWin.setIgnoreMouseEvents(true, { forward: true })
+  } else {
+    ballWin.setIgnoreMouseEvents(false)
+  }
 })
 
 // ── IPC: 调试 ──────────────────────────────────────────────

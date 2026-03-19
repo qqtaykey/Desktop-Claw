@@ -10,7 +10,7 @@
 
 **当前阶段：** Milestone A（架构闭环）  
 **最近更新：** 2026-03-19  
-**下一个目标：** A.1 ChatPanel UI + Milestone A.2 WebSocket 通路
+**下一个目标：** A.1 双击 QuickInput + 右键菜单 → A.2 WebSocket 通路
 
 ---
 
@@ -39,6 +39,28 @@
 ---
 
 ## 开发日志
+
+### 2026-03-19｜Milestone A.1 · 悬浮球单击交互 + 气泡组件
+
+**完成内容：**
+- `apps/desktop/src/main/index.ts`：Ball 窗口从 72×72 扩展为 240×220（含气泡区域），启用 `setIgnoreMouseEvents(true, { forward: true })` 透明穿透
+- `apps/desktop/src/main/index.ts`：新增 `set-ignore-mouse-events` IPC 通道，renderer 可动态切换穿透状态
+- `apps/desktop/src/preload/index.ts`：新增 `setIgnoreMouseEvents()` contextBridge 暴露
+- `apps/desktop/src/renderer/components/FloatingBall/index.tsx`：重写交互逻辑 — 单击显示随机气泡，双击预留（250ms 定时器区分），拖拽不变，mouseenter/mouseleave 控制穿透
+- `apps/desktop/src/renderer/components/ChatBubble/index.tsx`：新建气泡组件，CSS 动画入场 + 渐隐退场，3 秒后自动消失
+- `apps/desktop/src/renderer/components/FloatingBall/styles.css`：球移至底部居中，新增 `.bubble-area` 气泡区域（`pointer-events: none`），移除已废弃的 `.ball--open`
+
+**验证结果：**
+- `pnpm typecheck` → 三个 tsconfig 目标全部 0 错误 ✅
+
+**关键决策记录：**
+- 透明穿透方案：使用 Electron `setIgnoreMouseEvents(true, { forward: true })` + renderer mouseenter/mouseleave 动态切换，仅球区域接收点击，其余透明区域穿透到桌面
+- 单击 vs 双击区分：通过 250ms setTimeout 定时器判断，第一次点击等待可能的第二次，超时则确认为单击
+- ChatBubble 使用 React `key={id}` 强制重挂载以正确触发入场动画
+
+**下一步：** A.1 双击交互（QuickInput 条形输入框） + 右键菜单（ContextMenu）
+
+---
 
 ### 2026-03-19｜代码质量修正 · M0/A.1 遗留问题清理
 
