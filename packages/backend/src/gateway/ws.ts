@@ -2,10 +2,15 @@ import type { FastifyInstance } from 'fastify'
 import websocket from '@fastify/websocket'
 import type { WebSocket } from 'ws'
 import type { ChatMessageData } from '@desktop-claw/shared'
+import { streamChat } from '../llm/client'
 
 /** 内存会话记录（MVP：单对话，无持久化） */
 const conversation: ChatMessageData[] = []
 const clients = new Set<WebSocket>()
+
+/** 当前运行中的任务（用于取消） */
+let activeAbort: AbortController | null = null
+let activeTaskId: string | null = null
 
 let msgCounter = 0
 function genMsgId(): string {
@@ -81,21 +86,50 @@ function handleClientMessage(
         payload: { content }
       })
 
-      // Echo 模式：延迟返回以模拟 AI 思考
-      const echoContent = `收到「${content}」🐾`
-      setTimeout(() => {
-        conversation.push({ role: 'assistant', content: echoContent })
-        broadcast({
-          id: genMsgId(),
-          type: 'task.done',
-          taskId: msg.taskId,
-          ts: new Date().toISOString(),
-          payload: { content: echoContent }
-        })
-      }, 300)
+      // LLM 流式调用
+      activeTaskId = msg.taskId
+      activeAbort = streamChat(conversation, {
+        onToken(delta) {
+          broadcast({
+            id: genMsgId(),
+            type: 'task.token',
+            taskId: msg.taskId,
+            ts: new Date().toISOString(),
+            payload: { delta }
+          })
+        },
+        onDone(fullContent) {
+          conversation.push({ role: 'assistant', content: fullContent })
+          broadcast({
+            id: genMsgId(),
+            type: 'task.done',
+            taskId: msg.taskId,
+            ts: new Date().toISOString(),
+            payload: { content: fullContent }
+          })
+          activeAbort = null
+          activeTaskId = null
+        },
+        onError(code, message) {
+          broadcast({
+            id: genMsgId(),
+            type: 'task.error',
+            taskId: msg.taskId,
+            ts: new Date().toISOString(),
+            payload: { code, message }
+          })
+          activeAbort = null
+          activeTaskId = null
+        }
+      })
       break
     }
     case 'task.cancel': {
+      if (activeAbort && activeTaskId === msg.taskId) {
+        activeAbort.abort()
+        activeAbort = null
+        activeTaskId = null
+      }
       broadcast({
         id: genMsgId(),
         type: 'task.cancelled',
