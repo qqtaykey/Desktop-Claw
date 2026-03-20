@@ -153,8 +153,11 @@ export function useClawSocket(): {
     ws.onclose = (): void => {
       console.log('[ws] disconnected')
       setConnected(false)
-      wsRef.current = null
-      reconnectTimer.current = setTimeout(connect, 1000)
+      // 只有当前活跃连接断线才重连；cleanup 关闭的旧连接不触发重连
+      if (wsRef.current === ws) {
+        wsRef.current = null
+        reconnectTimer.current = setTimeout(connect, 1000)
+      }
     }
 
     ws.onerror = (): void => {
@@ -165,8 +168,14 @@ export function useClawSocket(): {
   useEffect(() => {
     connect()
     return () => {
-      if (reconnectTimer.current) clearTimeout(reconnectTimer.current)
-      wsRef.current?.close()
+      if (reconnectTimer.current) {
+        clearTimeout(reconnectTimer.current)
+        reconnectTimer.current = null
+      }
+      // 先置空 ref 再 close，确保 onclose 不会重连
+      const ws = wsRef.current
+      wsRef.current = null
+      ws?.close()
     }
   }, [connect])
 
