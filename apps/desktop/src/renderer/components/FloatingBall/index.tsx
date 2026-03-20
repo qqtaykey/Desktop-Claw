@@ -17,14 +17,34 @@ const GREETINGS = [
   '陪着你呢'
 ]
 
+const MAX_BUBBLES = 3
+
+/** 根据气泡数量返回从旧到新的 opacity 列表 */
+function getBubbleOpacities(count: number): number[] {
+  if (count <= 1) return [1.0]
+  if (count === 2) return [0.6, 1.0]
+  return [0.4, 0.7, 1.0]
+}
+
+/** 根据文本长度计算气泡停留时间（ms）：5s 底 + 50ms/字，上限 15s */
+function calcBubbleDuration(text: string): number {
+  return Math.max(5000, Math.min(15000, 5000 + text.length * 50))
+}
+
 interface QuickInputState {
   visible: boolean
   direction: 'left' | 'right'
 }
 
+interface BubbleItem {
+  id: number
+  text: string
+  streaming?: boolean
+}
+
 export function FloatingBall(): React.JSX.Element {
   const { messages, sendMessage } = useClawSocket()
-  const [bubble, setBubble] = useState<{ id: number; text: string } | null>(null)
+  const [bubbles, setBubbles] = useState<BubbleItem[]>([])
   const [qiState, setQiState] = useState<QuickInputState | null>(null)
   const movedRef = useRef(false)
   const isDraggingRef = useRef(false)
@@ -33,18 +53,54 @@ export function FloatingBall(): React.JSX.Element {
   const ballRef = useRef<HTMLDivElement>(null)
   const listenersRef = useRef<{ onMove: () => void; onUp: (e: MouseEvent) => void } | null>(null)
   const prevMsgCountRef = useRef(0)
+  const prevStreamingRef = useRef(false)
+  const streamingBubbleIdRef = useRef<number | null>(null)
 
   const isQiVisible = qiState?.visible ?? false
 
-  // 监听新的 AI 消息 → 显示为气泡
+  // 监听 AI 消息 → 流式气泡：开始时创建，token 时更新，完成时定型
   useEffect(() => {
-    if (messages.length > prevMsgCountRef.current) {
-      const latest = messages[messages.length - 1]
-      if (latest && latest.role === 'assistant' && !latest.streaming && latest.content) {
-        showBubble(latest.content)
+    const latest = messages[messages.length - 1]
+    const wasStreaming = prevStreamingRef.current
+    const isNewMsg = messages.length > prevMsgCountRef.current
+
+    if (latest && latest.role === 'assistant') {
+      if (latest.streaming) {
+        if (isNewMsg && !wasStreaming) {
+          // 流式开始 → 创建 streaming 气泡
+          bubbleIdRef.current += 1
+          const newId = bubbleIdRef.current
+          streamingBubbleIdRef.current = newId
+          setBubbles((prev) => {
+            const next = [...prev, { id: newId, text: latest.content || '', streaming: true }]
+            return next.length > MAX_BUBBLES ? next.slice(-MAX_BUBBLES) : next
+          })
+        } else if (streamingBubbleIdRef.current !== null) {
+          // 流式 token → 更新气泡文本
+          const sid = streamingBubbleIdRef.current
+          setBubbles((prev) =>
+            prev.map((b) => (b.id === sid ? { ...b, text: latest.content } : b))
+          )
+        }
+      } else if (wasStreaming && !latest.streaming) {
+        // 流式完成 → 定型气泡
+        const sid = streamingBubbleIdRef.current
+        if (sid !== null) {
+          setBubbles((prev) =>
+            prev.map((b) =>
+              b.id === sid ? { ...b, text: latest.content, streaming: false } : b
+            )
+          )
+          streamingBubbleIdRef.current = null
+        }
+      } else if (isNewMsg && !latest.streaming && latest.content) {
+        // 非流式的完整消息（如 conversation.history 恢复）
+        pushBubble(latest.content)
       }
     }
+
     prevMsgCountRef.current = messages.length
+    prevStreamingRef.current = !!latest?.streaming
   }, [messages])
 
   useEffect(() => {
@@ -60,15 +116,19 @@ export function FloatingBall(): React.JSX.Element {
     }
   }, [])
 
-  const showBubble = useCallback((text: string) => {
+  const pushBubble = useCallback((text: string) => {
     bubbleIdRef.current += 1
-    setBubble({ id: bubbleIdRef.current, text })
+    const newBubble: BubbleItem = { id: bubbleIdRef.current, text }
+    setBubbles((prev) => {
+      const next = [...prev, newBubble]
+      return next.length > MAX_BUBBLES ? next.slice(-MAX_BUBBLES) : next
+    })
   }, [])
 
   const handleSingleClick = useCallback(() => {
     const text = GREETINGS[Math.floor(Math.random() * GREETINGS.length)]
-    showBubble(text)
-  }, [showBubble])
+    pushBubble(text)
+  }, [pushBubble])
 
   const toggleQuickInput = useCallback(async () => {
     const state = await window.electronAPI.toggleQuickInput()
@@ -82,8 +142,8 @@ export function FloatingBall(): React.JSX.Element {
     [sendMessage]
   )
 
-  const handleBubbleDismiss = useCallback(() => {
-    setBubble(null)
+  const handleBubbleDismiss = useCallback((id: number) => {
+    setBubbles((prev) => prev.filter((b) => b.id !== id))
   }, [])
 
   const handleMouseEnter = useCallback(() => {
@@ -169,24 +229,36 @@ export function FloatingBall(): React.JSX.Element {
   const expanded = isQiVisible
   const direction = qiState?.direction ?? 'left'
 
+  // 计算 opacity 和 tail 方向
+  const opacities = getBubbleOpacities(bubbles.length)
+  const tailAlign: 'center' | 'left' | 'right' = expanded
+    ? direction === 'left'
+      ? 'right'
+      : 'left'
+    : 'center'
+
   return (
     <div className={`ball-root${expanded ? ` ball-root--expanded ball-root--${direction}` : ''}`}>
-      {expanded && direction === 'left' && (
-        <div className="qi-area">
-          <QuickInput onSend={handleQuickSend} onClose={toggleQuickInput} />
-        </div>
-      )}
-      <div className="ball-column">
-        <div className="bubble-area">
-          {bubble && (
-            <ChatBubble
-              key={bubble.id}
-              message={bubble}
-              duration={3000}
-              onDismiss={handleBubbleDismiss}
-            />
-          )}
-        </div>
+      <div className="bubble-area">
+        {bubbles.map((b, i) => (
+          <ChatBubble
+            key={b.id}
+            message={b}
+            duration={calcBubbleDuration(b.text)}
+            opacity={opacities[i]}
+            showTail={i === bubbles.length - 1}
+            tailAlign={tailAlign}
+            streaming={b.streaming}
+            onDismiss={handleBubbleDismiss}
+          />
+        ))}
+      </div>
+      <div className="bottom-section">
+        {expanded && direction === 'left' && (
+          <div className="qi-area">
+            <QuickInput onSend={handleQuickSend} onClose={toggleQuickInput} />
+          </div>
+        )}
         <div
           ref={ballRef}
           className="ball"
@@ -198,12 +270,12 @@ export function FloatingBall(): React.JSX.Element {
         >
           <span className="ball__icon">🐾</span>
         </div>
+        {expanded && direction === 'right' && (
+          <div className="qi-area">
+            <QuickInput onSend={handleQuickSend} onClose={toggleQuickInput} />
+          </div>
+        )}
       </div>
-      {expanded && direction === 'right' && (
-        <div className="qi-area">
-          <QuickInput onSend={handleQuickSend} onClose={toggleQuickInput} />
-        </div>
-      )}
     </div>
   )
 }
