@@ -1,5 +1,6 @@
-import type { ChatMessageData } from '@desktop-claw/shared'
+import type { ChatMessageData, ToolCall } from '@desktop-claw/shared'
 import { streamChat } from '../llm/client'
+import { SkillManager } from './skill-manager'
 
 /** Agent Loop 最大迭代回合数（防死循环） */
 const MAX_STEPS = 10
@@ -7,9 +8,20 @@ const MAX_STEPS = 10
 /** 上下文保留最大轮数（user+assistant 算一轮） */
 const MAX_HISTORY_TURNS = 10
 
-/** System Prompt — MVP 固定版本，后续改为运行时组装 */
-const SYSTEM_PROMPT =
+/** System Prompt — 基础人格，Skill 指南会追加在后面 */
+const BASE_SYSTEM_PROMPT =
   '你是 Claw 🐾，一个住在用户桌面上的 AI 桌宠伙伴。你友好、简洁、有趣，偶尔带点俏皮。用中文回复。'
+
+/** 全局 SkillManager 单例（首次调用时初始化） */
+let skillManager: SkillManager | null = null
+
+async function getSkillManager(): Promise<SkillManager> {
+  if (!skillManager) {
+    skillManager = new SkillManager()
+    await skillManager.load()
+  }
+  return skillManager
+}
 
 export interface AgentLoopParams {
   /** 用户当前输入 */
@@ -80,30 +92,80 @@ async function _runLoop(
   { prompt, history, onToken, onDone, onError }: AgentLoopParams,
   controller: AbortController
 ): Promise<void> {
+  // 0. 加载 SkillManager
+  const sm = await getSkillManager()
+
   // 1. 裁剪历史
   const trimmed = trimHistory(history, MAX_HISTORY_TURNS)
 
-  // 2. 组装内部 messages 数组
+  // 2. 组装 system prompt（基础人格 + Skill 行为指南）
+  const systemPrompt = BASE_SYSTEM_PROMPT + sm.getSkillPrompt()
+
+  // 3. 收集 tools
+  const toolSchemas = sm.getToolSchemas()
+
+  // 4. 组装内部 messages 数组
   //    当前 prompt 不在 history 里，单独追加为最后一条 user 消息
   const messages: ChatMessageData[] = [...trimmed, { role: 'user', content: prompt }]
 
-  // 3. ReAct 循环
+  // 5. ReAct 循环
   for (let step = 0; step < MAX_STEPS; step++) {
     if (controller.signal.aborted) {
       onError('CANCELLED', '任务已取消')
       return
     }
 
-    // 调用 LLM（传入 systemPrompt + messages，流式返回）
-    const result = await callLLM(messages, onToken, controller)
+    // 调用 LLM
+    const result = await callLLM(messages, onToken, controller, systemPrompt, toolSchemas)
 
     if (result.error) {
       onError(result.error.code, result.error.message)
       return
     }
 
-    // MVP：无 tool_calls，LLM 只返回纯文本 → 直接结束
-    // 未来 A.6：检查 result.toolCalls，执行工具，追加 tool_result 到 messages，continue
+    // 如果 LLM 返回了 tool_calls → 执行工具 → 追加结果 → 继续循环
+    if (result.toolCalls && result.toolCalls.length > 0) {
+      // 追加 assistant 的 tool_calls 消息到 messages
+      messages.push({
+        role: 'assistant',
+        content: result.content || '',
+        tool_calls: result.toolCalls
+      })
+
+      // 逐个执行 tool，追加 tool result
+      for (const tc of result.toolCalls) {
+        let toolName: string
+        let toolArgs: Record<string, unknown>
+
+        try {
+          toolName = tc.function.name
+          toolArgs = JSON.parse(tc.function.arguments)
+        } catch {
+          // JSON 解析失败
+          messages.push({
+            role: 'tool',
+            content: `参数解析失败: ${tc.function.arguments}`,
+            tool_call_id: tc.id
+          })
+          continue
+        }
+
+        const toolResult = await sm.executeTool(toolName, toolArgs)
+
+        messages.push({
+          role: 'tool',
+          content: toolResult.success
+            ? toolResult.content
+            : `错误: ${toolResult.error ?? '未知错误'}`,
+          tool_call_id: tc.id
+        })
+      }
+
+      // 继续下一轮迭代（让 LLM 看到 tool 结果后继续思考）
+      continue
+    }
+
+    // LLM 返回纯文本 → 结束循环
     if (result.content) {
       onDone(result.content)
       return
@@ -122,30 +184,43 @@ async function _runLoop(
 
 interface LLMResult {
   content: string | null
+  toolCalls: ToolCall[] | null
   error: { code: string; message: string } | null
 }
 
 /**
- * 将 streamChat 包装为 Promise，收集完整文本
+ * 将 streamChat 包装为 Promise，收集完整文本或 tool_calls
  * 同时通过 onToken 实时分发 delta
  */
 function callLLM(
   messages: ChatMessageData[],
   onToken: (delta: string) => void,
-  controller: AbortController
+  controller: AbortController,
+  systemPrompt: string,
+  tools: import('@desktop-claw/shared').ToolSchema[]
 ): Promise<LLMResult> {
   return new Promise((resolve) => {
-    const abort = streamChat(messages, {
-      onToken(delta) {
-        onToken(delta)
+    const abort = streamChat(
+      messages,
+      {
+        onToken(delta) {
+          onToken(delta)
+        },
+        onDone(fullContent) {
+          resolve({ content: fullContent, toolCalls: null, error: null })
+        },
+        onError(code, message) {
+          resolve({ content: null, toolCalls: null, error: { code, message } })
+        },
+        onToolCalls(toolCalls) {
+          resolve({ content: null, toolCalls, error: null })
+        }
       },
-      onDone(fullContent) {
-        resolve({ content: fullContent, error: null })
-      },
-      onError(code, message) {
-        resolve({ content: null, error: { code, message } })
+      {
+        systemPrompt,
+        tools: tools.length > 0 ? tools : undefined
       }
-    }, SYSTEM_PROMPT)
+    )
 
     // 关联取消：agentLoop 的 controller abort 时，也 abort LLM 请求
     controller.signal.addEventListener('abort', () => abort.abort(), { once: true })

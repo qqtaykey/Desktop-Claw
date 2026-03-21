@@ -1,10 +1,19 @@
-import type { ChatMessageData } from '@desktop-claw/shared'
+import type { ChatMessageData, ToolSchema, ToolCall } from '@desktop-claw/shared'
 import { loadLLMConfig } from './config'
 
 export interface StreamCallbacks {
   onToken: (delta: string) => void
   onDone: (fullContent: string) => void
   onError: (code: string, message: string) => void
+  /** LLM 返回 tool_calls 时回调（不会同时触发 onDone） */
+  onToolCalls?: (toolCalls: ToolCall[]) => void
+}
+
+export interface StreamChatOptions {
+  /** 传给 LLM 的 tools 定义列表 */
+  tools?: ToolSchema[]
+  /** 自定义 system prompt（由 Agent Loop 传入） */
+  systemPrompt?: string
 }
 
 const TIMEOUT_MS = 30_000
@@ -12,27 +21,27 @@ const DEFAULT_SYSTEM_PROMPT = '你是 Claw 🐾，一个住在用户桌面上的
 
 /**
  * 流式调用 OpenAI 兼容 LLM API
- * @param systemPrompt 可选，自定义 system prompt（由 Agent Loop 传入）
+ * @param options 可选，tools + systemPrompt
  * @returns 一个 AbortController，可调用 .abort() 取消请求
  */
 export function streamChat(
   history: ChatMessageData[],
   callbacks: StreamCallbacks,
-  systemPrompt?: string
+  options?: StreamChatOptions
 ): AbortController {
   const controller = new AbortController()
 
   // 异步执行，不阻塞调用方
-  void _doStream(history, callbacks, controller, systemPrompt)
+  void _doStream(history, callbacks, controller, options)
 
   return controller
 }
 
 async function _doStream(
   history: ChatMessageData[],
-  { onToken, onDone, onError }: StreamCallbacks,
+  { onToken, onDone, onError, onToolCalls }: StreamCallbacks,
   controller: AbortController,
-  systemPrompt?: string
+  options?: StreamChatOptions
 ): Promise<void> {
   const config = loadLLMConfig()
   if (!config) {
@@ -41,9 +50,18 @@ async function _doStream(
   }
 
   // 构建 messages：system + history
-  const messages = [
-    { role: 'system' as const, content: systemPrompt ?? DEFAULT_SYSTEM_PROMPT },
-    ...history.map((m) => ({ role: m.role, content: m.content }))
+  //   需要正确映射 tool_calls、tool 消息给 OpenAI API 格式
+  const messages: Record<string, unknown>[] = [
+    { role: 'system', content: options?.systemPrompt ?? DEFAULT_SYSTEM_PROMPT },
+    ...history.map((m) => {
+      if (m.role === 'assistant' && m.tool_calls) {
+        return { role: 'assistant', content: m.content || null, tool_calls: m.tool_calls }
+      }
+      if (m.role === 'tool' && m.tool_call_id) {
+        return { role: 'tool', content: m.content, tool_call_id: m.tool_call_id }
+      }
+      return { role: m.role, content: m.content }
+    })
   ]
 
   // 规范化 baseURL：确保以 / 结尾，拼接 chat/completions
@@ -53,18 +71,25 @@ async function _doStream(
   const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS)
 
   try {
+    const body: Record<string, unknown> = {
+      model: config.model,
+      messages,
+      stream: true,
+      max_tokens: 2048
+    }
+
+    // 有 tools 时添加到请求体
+    if (options?.tools && options.tools.length > 0) {
+      body.tools = options.tools
+    }
+
     const res = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${config.apiKey}`
       },
-      body: JSON.stringify({
-        model: config.model,
-        messages,
-        stream: true,
-        max_tokens: 2048
-      }),
+      body: JSON.stringify(body),
       signal: controller.signal
     })
 
@@ -86,6 +111,9 @@ async function _doStream(
     let fullContent = ''
     let buffer = ''
 
+    // tool_calls 累积器：SSE 流中 tool_calls 可能跨多个 chunk
+    const pendingToolCalls: Map<number, { id: string; type: 'function'; function: { name: string; arguments: string } }> = new Map()
+
     while (true) {
       const { done, value } = await reader.read()
       if (done) break
@@ -106,10 +134,44 @@ async function _doStream(
 
         try {
           const parsed = JSON.parse(data)
-          const delta = parsed.choices?.[0]?.delta?.content
-          if (typeof delta === 'string' && delta.length > 0) {
-            fullContent += delta
-            onToken(delta)
+          const choice = parsed.choices?.[0]
+          if (!choice) continue
+
+          const delta = choice.delta
+
+          // 文本内容
+          if (typeof delta?.content === 'string' && delta.content.length > 0) {
+            fullContent += delta.content
+            onToken(delta.content)
+          }
+
+          // tool_calls（流式累积）
+          if (Array.isArray(delta?.tool_calls)) {
+            for (const tc of delta.tool_calls) {
+              const idx = tc.index ?? 0
+              const existing = pendingToolCalls.get(idx)
+              if (!existing) {
+                // 新的 tool_call
+                pendingToolCalls.set(idx, {
+                  id: tc.id ?? '',
+                  type: 'function',
+                  function: {
+                    name: tc.function?.name ?? '',
+                    arguments: tc.function?.arguments ?? ''
+                  }
+                })
+              } else {
+                // 增量追加
+                if (tc.id) existing.id = tc.id
+                if (tc.function?.name) existing.function.name += tc.function.name
+                if (tc.function?.arguments) existing.function.arguments += tc.function.arguments
+              }
+            }
+          }
+
+          // 非流式响应中的完整 tool_calls（某些 API 会直接返回完整 tool_calls）
+          if (choice.finish_reason === 'tool_calls' || choice.finish_reason === 'stop') {
+            // finish_reason 处理在流结束后统一进行
           }
         } catch {
           // 解析失败的行静默跳过
@@ -118,7 +180,13 @@ async function _doStream(
       }
     }
 
-    onDone(fullContent)
+    // 流结束后判断：有 tool_calls 则优先走 onToolCalls，否则 onDone
+    if (pendingToolCalls.size > 0 && onToolCalls) {
+      const toolCalls = Array.from(pendingToolCalls.values())
+      onToolCalls(toolCalls)
+    } else {
+      onDone(fullContent)
+    }
   } catch (err: unknown) {
     clearTimeout(timeoutId)
 

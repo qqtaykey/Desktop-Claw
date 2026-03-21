@@ -12,3 +12,10 @@ export type {
   ChatMessageData,
   ConversationHistoryPayload
 } from './types/ws'
+
+export type {
+  ToolSchema,
+  ToolResult,
+  ToolDefinition,
+  ToolCall
+} from './types/tool'
