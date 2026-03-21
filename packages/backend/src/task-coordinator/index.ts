@@ -38,15 +38,15 @@ export class TaskCoordinator {
 
   /** 获取会话历史的回调，由外部注入 */
   private getHistory: () => ChatMessageData[]
-  /** 任务完成后追加 assistant 消息的回调 */
-  private pushAssistant: (content: string) => void
+  /** 任务完成后追加本轮产生的所有消息（含 tool_calls / tool_result / final assistant） */
+  private pushMessages: (messages: ChatMessageData[]) => void
 
   constructor(
     getHistory: () => ChatMessageData[],
-    pushAssistant: (content: string) => void
+    pushMessages: (messages: ChatMessageData[]) => void
   ) {
     this.getHistory = getHistory
-    this.pushAssistant = pushAssistant
+    this.pushMessages = pushMessages
   }
 
   /**
@@ -119,9 +119,9 @@ export class TaskCoordinator {
       prompt: next.content,
       history: this.getHistory(),
       onToken: (delta) => next.callbacks.onToken(delta),
-      onDone: (fullContent) => {
+      onDone: (fullContent, newMessages) => {
         next.status = 'done'
-        this.pushAssistant(fullContent)
+        this.pushMessages(newMessages)
         next.callbacks.onDone(fullContent)
         this.running = null
         this.abortController = null

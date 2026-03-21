@@ -30,8 +30,8 @@ export interface AgentLoopParams {
   history: ChatMessageData[]
   /** 流式 token 回调 */
   onToken: (delta: string) => void
-  /** 最终完成回调 */
-  onDone: (fullContent: string) => void
+  /** 最终完成回调（附带本轮 ReAct 循环产生的全部新消息） */
+  onDone: (fullContent: string, newMessages: ChatMessageData[]) => void
   /** 错误回调 */
   onError: (code: string, message: string) => void
   /** 取消信号 */
@@ -108,6 +108,9 @@ async function _runLoop(
   //    当前 prompt 不在 history 里，单独追加为最后一条 user 消息
   const messages: ChatMessageData[] = [...trimmed, { role: 'user', content: prompt }]
 
+  // 记录初始长度，循环结束后 messages.slice(baseLen) 即为本轮新增消息
+  const baseLen = messages.length
+
   // 5. ReAct 循环
   for (let step = 0; step < MAX_STEPS; step++) {
     if (controller.signal.aborted) {
@@ -167,7 +170,9 @@ async function _runLoop(
 
     // LLM 返回纯文本 → 结束循环
     if (result.content) {
-      onDone(result.content)
+      // 将最终 assistant 消息也加入 messages，再一并传出
+      messages.push({ role: 'assistant', content: result.content })
+      onDone(result.content, messages.slice(baseLen))
       return
     }
 

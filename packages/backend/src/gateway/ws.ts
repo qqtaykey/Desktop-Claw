@@ -12,8 +12,8 @@ const clients = new Set<WebSocket>()
 const coordinator = new TaskCoordinator(
   // getHistory：返回不含最后一条 user 消息的历史（agentLoop 内部会自己追加 prompt）
   () => conversation.slice(0, -1),
-  // pushAssistant：任务完成后追加 assistant 消息
-  (content) => conversation.push({ role: 'assistant', content })
+  // pushMessages：任务完成后追加本轮所有消息（tool_calls + tool_result + final assistant）
+  (messages) => conversation.push(...messages)
 )
 
 let msgCounter = 0
