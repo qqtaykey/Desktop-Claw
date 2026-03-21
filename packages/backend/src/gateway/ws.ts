@@ -2,15 +2,19 @@ import type { FastifyInstance } from 'fastify'
 import websocket from '@fastify/websocket'
 import type { WebSocket } from 'ws'
 import type { ChatMessageData } from '@desktop-claw/shared'
-import { agentLoop } from '../agent/loop'
+import { TaskCoordinator } from '../task-coordinator'
 
 /** 内存会话记录（MVP：单对话，无持久化） */
 const conversation: ChatMessageData[] = []
 const clients = new Set<WebSocket>()
 
-/** 当前运行中的任务（用于取消） */
-let activeAbort: AbortController | null = null
-let activeTaskId: string | null = null
+/** 任务协调器：FIFO 串行队列 */
+const coordinator = new TaskCoordinator(
+  // getHistory：返回不含最后一条 user 消息的历史（agentLoop 内部会自己追加 prompt）
+  () => conversation.slice(0, -1),
+  // pushAssistant：任务完成后追加 assistant 消息
+  (content) => conversation.push({ role: 'assistant', content })
+)
 
 let msgCounter = 0
 function genMsgId(): string {
@@ -86,11 +90,8 @@ function handleClientMessage(
         payload: { content }
       })
 
-      // Agent Loop（替代直接调 LLM）
-      activeTaskId = msg.taskId
-      activeAbort = agentLoop({
-        prompt: content,
-        history: conversation.slice(0, -1), // 不含刚 push 的当前 user 消息（loop 内部会自己追加）
+      // 入队 Task Coordinator（串行执行）
+      const accepted = coordinator.enqueue(msg.taskId, content, {
         onToken(delta) {
           broadcast({
             id: genMsgId(),
@@ -101,7 +102,6 @@ function handleClientMessage(
           })
         },
         onDone(fullContent) {
-          conversation.push({ role: 'assistant', content: fullContent })
           broadcast({
             id: genMsgId(),
             type: 'task.done',
@@ -109,8 +109,6 @@ function handleClientMessage(
             ts: new Date().toISOString(),
             payload: { content: fullContent }
           })
-          activeAbort = null
-          activeTaskId = null
         },
         onError(code, message) {
           broadcast({
@@ -120,25 +118,31 @@ function handleClientMessage(
             ts: new Date().toISOString(),
             payload: { code, message }
           })
-          activeAbort = null
-          activeTaskId = null
+        },
+        onCancelled() {
+          broadcast({
+            id: genMsgId(),
+            type: 'task.cancelled',
+            taskId: msg.taskId,
+            ts: new Date().toISOString(),
+            payload: {}
+          })
         }
       })
+
+      if (!accepted) {
+        broadcast({
+          id: genMsgId(),
+          type: 'task.error',
+          taskId: msg.taskId,
+          ts: new Date().toISOString(),
+          payload: { code: 'QUEUE_FULL', message: '任务队列已满，请稍后再试' }
+        })
+      }
       break
     }
     case 'task.cancel': {
-      if (activeAbort && activeTaskId === msg.taskId) {
-        activeAbort.abort()
-        activeAbort = null
-        activeTaskId = null
-      }
-      broadcast({
-        id: genMsgId(),
-        type: 'task.cancelled',
-        taskId: msg.taskId,
-        ts: new Date().toISOString(),
-        payload: {}
-      })
+      coordinator.cancel(msg.taskId)
       break
     }
     default:
