@@ -1,5 +1,6 @@
 import { readFileSync, statSync, existsSync } from 'fs'
 import { join } from 'path'
+import { homedir } from 'os'
 
 // ─── data/ 目录解析 ──────────────────────────
 
@@ -58,6 +59,7 @@ function readCached(filePath: string): string {
 // ─── Base Prompt 模板 ────────────────────────
 
 function buildBasePrompt(isBootstrap: boolean, dataDir: string): string {
+  const home = homedir()
   const now = new Date()
   const dateStr = now.toLocaleDateString('zh-CN', {
     year: 'numeric',
@@ -78,8 +80,12 @@ function buildBasePrompt(isBootstrap: boolean, dataDir: string): string {
 - 人格核心: ${join(dataDir, 'persona', 'SOUL.md')}
 - 动态认知: ${join(dataDir, 'persona', 'CONTEXT.md')}
 - 记忆存储: ${join(dataDir, 'memory')}/
+- 用户桌面: ${join(home, 'Desktop')}/
+- 用户文档: ${join(home, 'Documents')}/
+- 用户下载: ${join(home, 'Downloads')}/
 
 > 执行文件操作时，请使用上述绝对路径，不要猜测。
+> 当用户说「桌面上的文件」时，使用「用户桌面」路径拼接文件名。
 
 ## 回复规范
 
