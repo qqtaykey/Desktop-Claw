@@ -7,7 +7,7 @@
 以悬浮球作为最小入口，陪你聊天、处理文件、做轻记录，也陪你学习和工作。
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Status](https://img.shields.io/badge/status-in%20development-yellow.svg)]()
+[![Status](https://img.shields.io/badge/status-Milestone%20C%20Done-brightgreen.svg)]()
 [![Platform](https://img.shields.io/badge/platform-macOS-lightgrey.svg)]()
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178c6.svg)](https://www.typescriptlang.org/)
 [![Electron](https://img.shields.io/badge/Electron-latest-47848f.svg)](https://www.electronjs.org/)
@@ -32,9 +32,7 @@ Desktop-Claw 想探索另一种方式：
 
 ## 功能预览
 
-> 🚧 项目正在积极开发中
-
-<!-- TODO: 补充截图或 GIF -->
+> 🚧 项目正在积极开发中，已完成 Milestone A–C
 
 - **●  悬浮球常驻桌面** — 随时唤起，不占 Dock ✅
 - **💬  自然对话** — 承接上下文，流式响应 ✅
@@ -122,6 +120,17 @@ pnpm dev
 
 首次启动后，右键悬浮球 → 设置，填写 LLM 配置（API Key、Base URL、Model）。配置保存在 `data/config.json`。
 
+### 打包分发
+
+```bash
+# 构建 + 打包为 .dmg / .zip（macOS）
+pnpm package
+```
+
+产物位于 `apps/desktop/release/`，当前包体积约 124 MB。
+
+安装后数据存储在 `~/Library/Application Support/Desktop-Claw/data/`，与开发环境隔离。
+
 ---
 
 ## 开发进度
@@ -131,7 +140,7 @@ pnpm dev
 | Milestone 0 | 架构设计与技术选型 | ✅ 完成 |
 | Milestone A | 架构闭环：桌面入口 + Agent Loop + 基础工具 | ✅ 完成 |
 | Milestone B | 体验稳定：人格体系 + 记忆归档 + 断线重连 + 日历视图 | ✅ 完成 |
-| Milestone C | 可扩展：测试基线 + 扩展位预留 | 🔲 未开始 |
+| Milestone C | 发布就绪：打包分发 + 数据路径适配 + 体验修复 + 测试基线 | ✅ 完成 |
 
 ---
 
