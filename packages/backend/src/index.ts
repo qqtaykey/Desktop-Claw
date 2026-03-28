@@ -1,6 +1,7 @@
 import Fastify from 'fastify'
 import { setupWebSocket } from './gateway/ws'
 import { setupCalendarRoutes } from './gateway/calendar'
+import { setupPersonaRoutes } from './gateway/persona'
 import { memoryService } from './memory/memory-service'
 
 const DEFAULT_PORT = 3721
@@ -30,6 +31,9 @@ export async function startBackend(port = DEFAULT_PORT): Promise<{
 
   // 注册日历查询路由（B.8）
   await setupCalendarRoutes(app)
+
+  // 注册人格信息路由
+  await setupPersonaRoutes(app)
 
   await app.listen({ port, host: '127.0.0.1' })
   console.log(`[backend] Fastify listening on http://127.0.0.1:${port}`)

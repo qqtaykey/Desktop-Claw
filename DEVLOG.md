@@ -10,7 +10,7 @@
 
 **当前阶段：** Milestone C 🔄 进行中  
 **最近更新：** 2026-03-28  
-**当前进度：** Milestone B 完成 + 记忆归档 Bug 修复
+**当前进度：** Milestone B 完成 + 记忆归档 Bug 修复 + Claw 角色面板
 
 ---
 
@@ -39,6 +39,27 @@
 ---
 
 ## 开发日志
+
+### 2026-03-28｜Claw 角色面板（C.7）
+
+**完成内容：**
+
+- **后端**：新增 `GET /persona` 路由（`gateway/persona.ts`），一次性返回 SOUL.md / USER.md / CONTEXT.md 三个文件的原始内容
+- **前端**：新增 `ClawProfile` 组件（`components/ClawProfile/`），ChatPanel Tab 栏新增第三个 Tab `🐾 Claw`
+  - SOUL.md：按 `##` 章节拆分，白名单过滤只展示「我是谁」「性格基调」「与用户的关系」，「性格基调」中的粗体条目提取为标签 badges
+  - USER.md：解析 `**key**：value` 结构为分组卡片，空模板时显示「还在了解你中...」
+  - CONTEXT.md：按粗体标题分区块，列表化展示，空模板时显示「暂无动态认知」
+  - 语气风格、能力边界、演化规则等 prompt engineering 内容不暴露给用户
+
+**设计决策：**
+- 一份数据 + 前端渲染美化，不额外维护"展示版"md 文件
+- 只读展示，不可编辑（信息由对话和 internalize 机制自动维护）
+- SOUL.md 通过章节白名单过滤，避免暴露 LLM 指令
+
+**验证结果：**
+- `tsc --noEmit` backend + desktop 均 0 错误 ✅
+
+---
 
 ### 2026-03-28｜记忆归档系统 Bug 修复（用户实机测试反馈）
 

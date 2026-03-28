@@ -2,9 +2,10 @@ import React, { useState, useRef, useCallback, useEffect } from 'react'
 import { useClawSocket } from '../../hooks/useClawSocket'
 import { CalendarView } from './CalendarView'
 import { DayDetailView } from './DayDetailView'
+import { ClawProfile } from '../ClawProfile'
 import './styles.css'
 
-type PanelTab = 'chat' | 'review'
+type PanelTab = 'chat' | 'review' | 'profile'
 type ReviewState = { view: 'calendar' } | { view: 'detail'; date: string }
 
 export function ChatPanel(): React.JSX.Element {
@@ -68,6 +69,12 @@ export function ChatPanel(): React.JSX.Element {
           >
             📅 回顾
           </button>
+          <button
+            className={`chat-panel__tab ${activeTab === 'profile' ? 'chat-panel__tab--active' : ''}`}
+            onClick={() => handleSwitchTab('profile')}
+          >
+            🐾 Claw
+          </button>
         </div>
         <button className="chat-panel__close" onClick={handleClose} title="关闭">×</button>
       </div>
@@ -123,7 +130,7 @@ export function ChatPanel(): React.JSX.Element {
             </button>
           </div>
         </>
-      ) : (
+      ) : activeTab === 'review' ? (
         <div className="chat-panel__review">
           {reviewState.view === 'calendar' ? (
             <CalendarView onSelectDate={(date) => setReviewState({ view: 'detail', date })} />
@@ -134,6 +141,8 @@ export function ChatPanel(): React.JSX.Element {
             />
           )}
         </div>
+      ) : (
+        <ClawProfile />
       )}
     </div>
   )
