@@ -64,7 +64,16 @@ function parseUser(raw: string): UserGroup[] {
   for (const line of raw.split('\n')) {
     const trimmed = line.trim()
     // >  开头的引用行跳过
-    if (trimmed.startsWith('>') || trimmed.startsWith('#')) continue
+    if (trimmed.startsWith('>')) continue
+
+    // # 一级标题跳过，## 二级标题作为分组
+    if (trimmed.startsWith('# ') && !trimmed.startsWith('## ')) continue
+    const h2Match = trimmed.match(/^##\s+(.+)$/)
+    if (h2Match) {
+      currentGroup = { title: h2Match[1], items: [] }
+      groups.push(currentGroup)
+      continue
+    }
 
     // **粗体标题** 行（不含 ：或 : 的独立粗体行作为分组标题）
     const groupMatch = trimmed.match(/^\*\*(.+?)\*\*$/)
@@ -82,6 +91,17 @@ function parseUser(raw: string): UserGroup[] {
         groups.push(currentGroup)
       }
       currentGroup.items.push({ key: kvMatch[1], value: kvMatch[2] })
+      continue
+    }
+
+    // - key：value 或 - key: value（无粗体格式）
+    const plainKvMatch = trimmed.match(/^-\s*(.+?)[：:]\s*(.+)$/)
+    if (plainKvMatch) {
+      if (!currentGroup) {
+        currentGroup = { title: '基本信息', items: [] }
+        groups.push(currentGroup)
+      }
+      currentGroup.items.push({ key: plainKvMatch[1], value: plainKvMatch[2] })
     }
   }
 
