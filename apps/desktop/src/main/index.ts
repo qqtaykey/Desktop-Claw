@@ -27,11 +27,25 @@ const BALL_WIN_H = 340
 function createBallWindow(): void {
   const { width, height } = screen.getPrimaryDisplay().workAreaSize
 
-  // 球（56px）在窗口底部居中，计算窗口位置使球出现在屏幕右下角
-  // 球中心在窗口内约: (BALL_WIN_W/2, BALL_WIN_H - 36)
-  // 目标球中心在屏幕约: (width - 60, height - 60)
-  const x = width - 60 - Math.round(BALL_WIN_W / 2)
-  const y = height - 60 - (BALL_WIN_H - 36)
+  // 默认位置：球出现在屏幕右下角
+  const defaultX = width - 60 - Math.round(BALL_WIN_W / 2)
+  const defaultY = height - 60 - (BALL_WIN_H - 36)
+
+  // 从 config 恢复上次位置，超出屏幕则 fallback 到默认
+  let x = defaultX
+  let y = defaultY
+  const saved = readConfig().ballPosition as { x: number; y: number } | undefined
+  if (saved && typeof saved.x === 'number' && typeof saved.y === 'number') {
+    const inBounds =
+      saved.x >= -BALL_WIN_W / 2 &&
+      saved.x <= width - BALL_WIN_W / 2 &&
+      saved.y >= 0 &&
+      saved.y <= height - 40
+    if (inBounds) {
+      x = saved.x
+      y = saved.y
+    }
+  }
 
   ballWin = new BrowserWindow({
     width: BALL_WIN_W,
@@ -90,7 +104,10 @@ ipcMain.on('drag:move', () => {
 })
 
 ipcMain.on('drag:end', () => {
-  // TODO: 持久化位置到 config.json（Milestone B）
+  if (!ballWin) return
+  const [bx, by] = ballWin.getPosition()
+  const existing = readConfig()
+  writeConfig({ ...existing, ballPosition: { x: bx, y: by } })
 })
 
 // ── IPC: 透明区域点击穿透 ──────────────────────────────────

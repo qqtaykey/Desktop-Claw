@@ -10,7 +10,7 @@
 
 **当前阶段：** Milestone C 🔄 进行中  
 **最近更新：** 2026-03-28  
-**当前进度：** C.4 数据路径适配 + C.1 Electron 打包 + C.2 App Icon + 生产环境 Skill 脚本修复
+**当前进度：** C.4 + C.1 + C.2 + C.3 完成，生产环境 Skill 脚本修复
 
 ---
 
@@ -108,6 +108,23 @@
 - 修改 `package.json`（根目录 package 脚本）
 - 新增 `apps/desktop/resources/persona/`（SOUL.md、BOOTSTRAP.md 副本）
 - `.gitignore` 新增 `release/`
+
+---
+
+### 2026-03-28｜C.3 悬浮球位置持久化
+
+**完成内容：**
+
+- **保存位置**：`drag:end` IPC handler 中调用 `ballWin.getPosition()` 获取窗口坐标，写入 `config.json` 的 `ballPosition: { x, y }` 字段
+- **恢复位置**：`createBallWindow()` 启动时读取 `config.json`，有保存位置则使用，无值则 fallback 到默认右下角
+- **边界检测**：保存位置超出当前屏幕范围时（如外接显示器变化），自动 fallback 到默认位置
+- 复用已有的 `readConfig()` / `writeConfig()` 基础设施，无需新增依赖
+
+**涉及文件：**
+- 修改 `apps/desktop/src/main/index.ts`（`createBallWindow` + `drag:end`）
+
+**验证结果：**
+- `tsc --noEmit -p tsconfig.node.json` → 0 错误 ✅
 
 ---
 
