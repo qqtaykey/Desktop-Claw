@@ -461,11 +461,11 @@ ${transcript}
 
   /**
    * BOOT 行为：每次 App 启动时执行的轻量逻辑。
-   * 1. 检查昨日归档是否未 sealed（意味着上次非正常关机）→ 补做 finalize + internalize + seal
+   * 1. 扫描所有未 sealed 的历史归档（跳过今天）→ 补做 finalize + internalize + seal
    * 2. 读取昨日 diary，供未来注入首条对话上下文
    */
   async boot(): Promise<BootResult> {
-    const yesterday = yesterdayDateStr()
+    const today = todayDateStr()
     const result: BootResult = {
       yesterdayDiary: null,
       recoveredYesterday: false,
@@ -479,33 +479,41 @@ ${transcript}
       console.log('[boot] BOOTSTRAP.md detected — first-run bootstrap mode')
     }
 
-    const archive = readArchive(yesterday)
-    if (!archive) {
-      console.log(`[boot] no archive for yesterday (${yesterday})`)
-      return result
-    }
+    // 扫描所有未 sealed 的历史归档（跳过今天，今天还在进行中）
+    const memDir = resolveMemoryDir()
+    const files = readdirSync(memDir)
+      .filter((f) => /^\d{4}-\d{2}-\d{2}\.json$/.test(f))
+      .map((f) => f.replace('.json', ''))
+      .sort()
 
-    // 补做昨日归档（上次非正常关机）
-    if (!archive.sealed) {
-      console.log(`[boot] yesterday (${yesterday}) not sealed, recovering...`)
+    for (const date of files) {
+      if (date === today) continue
+      const archive = readArchive(date)
+      if (!archive || archive.sealed) continue
+
+      console.log(`[boot] recovering unsealed archive: ${date}`)
       const userMsgCount = archive.messages.filter((m) => m.role === 'user').length
       if (userMsgCount >= 2) {
-        await this.finalizeDayArchive(yesterday)
-        await this.internalize(yesterday)
+        try {
+          await this.finalizeDayArchive(date)
+          await this.internalize(date)
+        } catch (err) {
+          console.error(`[boot] recovery failed for ${date}:`, err)
+        }
       }
-      // 标记封存
-      const updated = readArchive(yesterday)
+      // 无论 finalize 是否成功，都标记 sealed（防止反复重试死循环）
+      const updated = readArchive(date)
       if (updated && !updated.sealed) {
         updated.sealed = true
         writeArchive(updated)
-        console.log(`[boot] sealed recovered archive for ${yesterday}`)
+        console.log(`[boot] sealed recovered archive for ${date}`)
       }
       result.recoveredYesterday = true
     }
 
     // 读取昨日 diary
-    const sealed = readArchive(yesterday)
-    result.yesterdayDiary = sealed?.diary ?? null
+    const yesterday = readArchive(yesterdayDateStr())
+    result.yesterdayDiary = yesterday?.diary ?? null
     if (result.yesterdayDiary) {
       console.log(`[boot] yesterday diary: ${result.yesterdayDiary.slice(0, 80)}...`)
     }
@@ -551,9 +559,20 @@ ${transcript}
 
   // ── 生命周期 ──
 
+  /** 带超时的 Promise 包装 */
+  private _withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+    return Promise.race([
+      promise,
+      new Promise<T>((_, reject) =>
+        setTimeout(() => reject(new Error(`${label} timeout (${ms}ms)`)), ms)
+      )
+    ])
+  }
+
   /**
-   * 关机归档：finalize（摘要/日记） → internalize（内化） → seal（封存）。
-   * 任一步骤失败不阻塞后续步骤；seal 标记始终写入。
+   * 关机归档：finalize（摘要/日记） → internalize（内化） → 条件 seal（封存）。
+   * finalize 成功才 seal；失败则不 seal，留给下次 boot() 重试。
+   * 每步独立 20s 超时，防止卡死。
    */
   async sealDay(): Promise<void> {
     const date = todayDateStr()
@@ -561,18 +580,37 @@ ${transcript}
     if (!archive) return
     if (archive.sealed) return
 
-    // 1. 生成 summary / facts / diary
-    await this.finalizeDayArchive(date)
+    let finalized = false
 
-    // 2. 内化到 CONTEXT.md / USER.md
-    await this.internalize(date)
+    // 1. 生成 summary / facts / diary（20s 超时）
+    try {
+      await this._withTimeout(this.finalizeDayArchive(date), 20000, 'finalize')
+      // 检查是否实际生成了内容
+      const check = readArchive(date)
+      finalized = !!(check?.summary || check?.diary)
+    } catch (err) {
+      console.error(`[memory] sealDay finalize failed:`, err)
+    }
 
-    // 3. 标记封存
-    const updated = readArchive(date)
-    if (updated && !updated.sealed) {
-      updated.sealed = true
-      writeArchive(updated)
-      console.log(`[memory] sealed archive for ${date}`)
+    // 2. 内化到 CONTEXT.md / USER.md（仅在 finalize 成功后，20s 超时）
+    if (finalized) {
+      try {
+        await this._withTimeout(this.internalize(date), 20000, 'internalize')
+      } catch (err) {
+        console.error(`[memory] sealDay internalize failed:`, err)
+      }
+    }
+
+    // 3. 只有 finalize 成功时才 seal，否则留给 boot() 下次重试
+    if (finalized) {
+      const updated = readArchive(date)
+      if (updated && !updated.sealed) {
+        updated.sealed = true
+        writeArchive(updated)
+        console.log(`[memory] sealed archive for ${date}`)
+      }
+    } else {
+      console.warn(`[memory] sealDay: finalize incomplete for ${date} — will retry on next boot`)
     }
   }
 }

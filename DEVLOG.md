@@ -8,9 +8,9 @@
 
 ## 项目状态
 
-**当前阶段：** Milestone B 🔄 进行中  
-**最近更新：** 2026-03-26  
-**当前进度：** B.2–B.8 全部代码完成 + 运行时 Bug 修复 + Agent 状态指示器
+**当前阶段：** Milestone C 🔄 进行中  
+**最近更新：** 2026-03-28  
+**当前进度：** Milestone B 完成 + 记忆归档 Bug 修复
 
 ---
 
@@ -33,12 +33,56 @@
 |--------|------|------|
 | Milestone 0 | 架构设计、技术选型、脚手架搭建 | ✅ 完成 |
 | Milestone A | 架构闭环（Gateway + Agent Loop + 三工具） | ✅ 完成 |
-| Milestone B | 体验稳定（取消/超时/记忆归档） | � 进行中 |
-| Milestone C | 可扩展（测试基线 + 扩展位预留） | 🔲 未开始 |
+| Milestone B | 体验稳定（取消/超时/记忆归档） | ✅ 完成 |
+| Milestone C | 可发布（包装/测试/收尾） | 🔄 进行中 |
 
 ---
 
 ## 开发日志
+
+### 2026-03-28｜记忆归档系统 Bug 修复（用户实机测试反馈）
+
+**问题发现（用户 3/28 测试报告）：**
+
+用户在 3/26 使用 Claw 聊天后关闭应用，3/28 重新启动时发现 Claw 完全不认识自己，表现为"第一次见面"。排查后确认为**连锁故障**：
+
+1. **26号对话无摘要**：关机时 `sealDay()` 中的 `finalizeDayArchive()` LLM 调用失败（超时/网络），但 archive 仍被标记为 `sealed: true`，导致 summary/diary/facts 全部为 null
+2. **USER.md/CONTEXT.md 为空**：BOOTSTRAP 引导已完成（BOOTSTRAP.md 已删除），但 `internalize()` 因 `summary === null` 跳过 → 用户画像和动态认知始终为空模板
+3. **Claw 失忆**：三无状态（无用户信息 + 无记忆 + 无 BOOTSTRAP）→ system prompt 退化为纯 SOUL.md → Claw 以为是第一次见面
+4. **回忆中断（偶发）**：recall_memory 工具执行期间触发前端 15s watchdog 超时
+
+**根因分析：**
+- `sealDay()` 无论 finalize 是否成功都执行 `seal()`，导致失败的归档被永久密封
+- `boot()` 仅检查"昨天"的 archive → 前天及更早的未完成归档永远无法补救
+- `before-quit` 超时仅 8s，不够 LLM 两次调用（summary + diary）完成
+
+**修复内容：**
+
+1. **`memory-service.ts` — `boot()` 全量补档**：
+   - 启动时扫描 `data/memory/` 下所有历史 JSON 文件（排除今天）
+   - 对每个 `sealed === false` 的 archive 执行 `finalizeDayArchive()` + `internalize()`
+   - 每个文件独立 try/catch + 无论成功与否最终 seal（防止重试死循环）
+
+2. **`memory-service.ts` — `sealDay()` 条件密封**：
+   - 新增 `_withTimeout<T>(promise, ms, label)` 私有方法，为 LLM 调用加 20s 单步超时
+   - finalize 完成后检查 archive 是否确实生成了 summary/diary
+   - 仅 finalize 成功时才 seal，失败时留给下次 `boot()` 重试
+
+3. **`main/index.ts` — 关机超时 8s → 30s**：
+   - sealDay 内部包含 2×20s LLM 调用，8s 不足 → 提升到 30s
+
+**验证结果：**
+- `pnpm --filter @desktop-claw/backend exec tsc --noEmit` → 0 错误 ✅
+- 预期：下次启动时 `boot()` 会自动处理 `2026-03-26.json`（sealed: false），补生成摘要并填充 USER.md / CONTEXT.md
+
+**关键决策记录：**
+- `boot()` 补档后仍执行 seal → 即使 LLM 再次失败也不会每次启动重试（避免死循环），代价是该天记忆可能无摘要
+- Watchdog 超时问题（Bug 4）本次不修，属偶发，后续 Milestone C 体验优化再处理
+- 不改 `internalize()` 本身逻辑，而是确保上游 finalize 成功 → internalize 自然执行
+
+**下一步：** 用户重启验证 → 确认 Claw 恢复记忆 → 继续 Milestone C
+
+---
 
 ### 2026-03-26｜B.2–B.8 全栈实现 + 运行时 Bug 修复 + Agent 状态指示器
 
