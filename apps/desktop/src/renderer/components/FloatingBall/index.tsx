@@ -17,6 +17,45 @@ const GREETINGS = [
   '陪着你呢'
 ]
 
+/** 按时段分组的启动开场语 */
+const STARTUP_GREETINGS: Record<string, string[]> = {
+  morning: [
+    '早～今天也一起加油 🐾',
+    '早安，新的一天开始啦',
+    '早上好呀，今天有什么计划？',
+    '早！精神怎么样？'
+  ],
+  afternoon: [
+    '下午好呀，在忙什么呢？',
+    '下午好～需要帮忙随时叫我',
+    '午后时光，状态怎么样？',
+    '下午好，我在呢 🐾'
+  ],
+  evening: [
+    '晚上好～有什么需要帮忙的吗',
+    '晚上好呀，今天辛苦了',
+    '晚上好，还在忙吗？',
+    '嗨～晚上好 🐾'
+  ],
+  latenight: [
+    '这么晚了，注意休息哦 🌙',
+    '夜深了，别太累了',
+    '还没睡呀，我陪着你 🌙',
+    '深夜了，早点休息哦'
+  ]
+}
+
+function getStartupGreeting(): string {
+  const hour = new Date().getHours()
+  let period: string
+  if (hour >= 6 && hour < 12) period = 'morning'
+  else if (hour >= 12 && hour < 18) period = 'afternoon'
+  else if (hour >= 18 && hour < 23) period = 'evening'
+  else period = 'latenight'
+  const pool = STARTUP_GREETINGS[period]
+  return pool[Math.floor(Math.random() * pool.length)]
+}
+
 const MAX_BUBBLES = 3
 
 /** 根据气泡数量返回从旧到新的 opacity 列表 */
@@ -125,9 +164,25 @@ export function FloatingBall(): React.JSX.Element {
     })
   }, [])
 
+  // 启动时弹出时段问候气泡（仅一次，不进入 conversation history）
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      pushBubble(getStartupGreeting())
+    }, 800)
+    return () => clearTimeout(timer)
+  }, [pushBubble])
+
   const handleSingleClick = useCallback(() => {
-    const text = GREETINGS[Math.floor(Math.random() * GREETINGS.length)]
-    pushBubble(text)
+    // 先尝试从 LLM 预生成池取，失败则 fallback 到固定模板
+    fetch('http://127.0.0.1:3721/greeting')
+      .then((r) => r.json())
+      .then((data: { greeting: string | null }) => {
+        const text = data.greeting ?? GREETINGS[Math.floor(Math.random() * GREETINGS.length)]
+        pushBubble(text)
+      })
+      .catch(() => {
+        pushBubble(GREETINGS[Math.floor(Math.random() * GREETINGS.length)])
+      })
   }, [pushBubble])
 
   const toggleQuickInput = useCallback(async () => {

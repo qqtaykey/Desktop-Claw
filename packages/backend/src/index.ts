@@ -3,6 +3,7 @@ import { setupWebSocket } from './gateway/ws'
 import { setupCalendarRoutes } from './gateway/calendar'
 import { setupPersonaRoutes } from './gateway/persona'
 import { memoryService } from './memory/memory-service'
+import { greetingService } from './memory/greeting-service'
 
 const DEFAULT_PORT = 3721
 
@@ -40,8 +41,10 @@ export async function startBackend(port = DEFAULT_PORT): Promise<{
   console.log(`[backend] WebSocket ready on ws://127.0.0.1:${port}/ws`)
 
   // BOOT 行为：启动后异步执行（不阻塞服务就绪）
-  void memoryService.boot().catch((err) =>
-    console.error('[backend] boot error:', err)
+  // boot 完成后异步初始化互动语池（LLM 预生成）
+  void memoryService.boot()
+    .then(() => greetingService.init())
+    .catch((err) => console.error('[backend] boot error:', err)
   )
 
   return {

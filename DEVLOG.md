@@ -10,7 +10,7 @@
 
 **当前阶段：** Milestone C 🔄 进行中  
 **最近更新：** 2026-03-28  
-**当前进度：** Milestone B 完成 + 记忆归档 Bug 修复 + Claw 角色面板
+**当前进度：** Milestone B 完成 + 记忆归档 Bug 修复 + Claw 角色面板 + LLM 互动语
 
 ---
 
@@ -39,6 +39,27 @@
 ---
 
 ## 开发日志
+
+### 2026-03-28｜LLM 互动语预生成 + 启动开场语（C.8）
+
+**完成内容：**
+
+- **启动开场语**：FloatingBall 组件挂载 800ms 后自动弹出时段问候气泡，按早/午/晚/深夜四个时段各 4 条模板随机选取，不进 conversation history
+- **LLM 互动语预生成**：新增 `greeting-service.ts`，boot 完成后异步调 LLM 一次性生成 8 条个性化互动语，结合用户画像（USER.md）和最近认知（CONTEXT.md）
+- **本地缓存**：生成结果写入 `data/memory/.greeting-cache.json`，当天有效 → 多次开关不重复调 LLM
+- **HTTP 路由**：`GET /greeting` 取一条互动语，剩余 < 3 条时后台异步补充
+- **前端改造**：单击悬浮球时先请求 `/greeting`（localhost ~几ms），有值用 LLM 的，无值/失败 fallback 到固定模板池
+
+**设计决策：**
+- 预生成 + 缓存池模式，而非实时调 LLM → 单击响应零延迟
+- 启动开场语保持模板池（零延迟兜底），单击互动走 LLM 池
+- 当天首次启动才调 LLM，后续读缓存 → 一天最多 1-2 次 LLM 调用
+- 固定模板池永远保留作为 fallback，不删除
+
+**验证结果：**
+- `tsc --noEmit` backend + desktop 均 0 错误 ✅
+
+---
 
 ### 2026-03-28｜Claw 角色面板（C.7）
 

@@ -1,6 +1,7 @@
 import { readFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import type { FastifyInstance } from 'fastify'
+import { greetingService } from '../memory/greeting-service'
 
 function resolveDataDir(): string {
   const candidates = [
@@ -28,5 +29,10 @@ export async function setupPersonaRoutes(app: FastifyInstance): Promise<void> {
       user: readPersonaFile('USER.md'),
       context: readPersonaFile('CONTEXT.md')
     }
+  })
+
+  // GET /greeting — 取一条 LLM 生成的互动语
+  app.get('/greeting', async () => {
+    return { greeting: greetingService.take() }
   })
 }
