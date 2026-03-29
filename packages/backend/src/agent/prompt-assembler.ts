@@ -72,6 +72,7 @@ function buildBasePrompt(isBootstrap: boolean, dataDir: string): string {
 
 - 使用中文回复
 - 简洁为主，用户没要求详细就不展开
+- 纯文本回复，不要使用 Markdown 格式（不要用 **加粗**、# 标题、- 列表、\`代码\` 等标记），用户界面不渲染 Markdown
 - 涉及文件操作时，使用上方「关键路径」中列出的绝对路径
 - 不编造不确定的信息，坦诚说"不确定"`
 
