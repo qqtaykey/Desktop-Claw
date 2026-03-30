@@ -7,12 +7,41 @@
 以悬浮球作为最小入口，陪你聊天、处理文件、做轻记录，也陪你学习和工作。
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Status](https://img.shields.io/badge/status-Milestone%20C%20Done-brightgreen.svg)]()
+[![Status](https://img.shields.io/badge/status-Active-brightgreen.svg)]()
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgrey.svg)]()
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178c6.svg)](https://www.typescriptlang.org/)
 [![Electron](https://img.shields.io/badge/Electron-latest-47848f.svg)](https://www.electronjs.org/)
 
 [下载最新版本](https://github.com/DjTaNg-404/Desktop-Claw/releases/latest) · [提交 Issue](https://github.com/DjTaNg-404/Desktop-Claw/issues)
+
+</div>
+
+---
+
+<div align="center">
+
+<table>
+<tr>
+<td align="center"><b>悬浮球常驻桌面</b></td>
+<td align="center"><b>双击快速提问</b></td>
+<td align="center"><b>对话 + 文件处理</b></td>
+</tr>
+<tr>
+<td><img src="docs/images/floating-ball.png" width="220" /></td>
+<td><img src="docs/images/quick-input.png" width="220" /></td>
+<td><img src="docs/images/chat-panel.png" width="220" /></td>
+</tr>
+<tr>
+<td align="center"><b>按天记忆回顾</b></td>
+<td align="center"><b>Claw 的回忆日记</b></td>
+<td align="center"><b>Claw 人格与认知</b></td>
+</tr>
+<tr>
+<td><img src="docs/images/calendar-review.png" width="220" /></td>
+<td><img src="docs/images/day-review.png" width="220" /></td>
+<td><img src="docs/images/claw-persona.png" width="220" /></td>
+</tr>
+</table>
 
 </div>
 
@@ -32,7 +61,7 @@ Desktop-Claw 想探索另一种方式：
 
 ## 功能预览
 
-> 🚧 项目正在积极开发中，已完成 Milestone A–C
+> 🚧 项目正在积极开发中
 
 - **●  悬浮球常驻桌面** — 随时唤起，不占 Dock ✅
 - **💬  自然对话** — 承接上下文，流式响应 ✅
@@ -159,10 +188,10 @@ pnpm run package:win
 
 | 阶段 | 内容 | 状态 |
 |------|------|------|
-| Milestone 0 | 架构设计与技术选型 | ✅ 完成 |
-| Milestone A | 架构闭环：桌面入口 + Agent Loop + 基础工具 | ✅ 完成 |
-| Milestone B | 体验稳定：人格体系 + 记忆归档 + 断线重连 + 日历视图 | ✅ 完成 |
-| Milestone C | 发布就绪：打包分发 + 数据路径适配 + 体验修复 + 测试基线 | ✅ 完成 |
+| 基础架构 | 架构设计与技术选型 | ✅ 完成 |
+| 核心闭环 | 桌面入口 + Agent Loop + 基础工具 | ✅ 完成 |
+| 体验稳定 | 人格体系 + 记忆归档 + 断线重连 + 日历视图 | ✅ 完成 |
+| 发布就绪 | 打包分发 + 数据路径适配 + 跨平台 | ✅ 完成 |
 
 ---
 
